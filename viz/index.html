@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+</head>
+<body>
+  <canvas width="960" height="600"></canvas>
+  <canvas width="960" height="600" class="offscreen" style="display: none;"></canvas>
+<script src="js/d3.v4.min.js"></script>
+<script src="js/dat.gui.min.js"></script>
+<script src="js/vec.js"></script>
+<script>
+
+var canvas = document.querySelector("canvas"),
+    context = canvas.getContext("2d"),
+    offscreen = document.querySelector(".offscreen"),
+    offscreenContext = offscreen.getContext("2d");
+
+var width = 960,    // The width of the box created
+    height = 600,   // The height of the box created
+    numBoids = 100, // Number of boids
+    numPreds = 2,   // Number of predators
+    flockmateRadius = 60,
+    separationDistance = 30,
+    maxVelocity = 2,
+    separationForce = 0.03,
+    alignmentForce = 0.03,
+    cohesionForce = 0.03,
+    repelForce = 0.03, // This is me testing
+    boids,
+    preds;
+
+// Length of boid trail - smaller number is a shorter tail
+offscreenContext.globalAlpha = 0.60; 
+
+// On click this event runs to create new boids
+d3.select("canvas").on("click", function(){
+  var xy = d3.mouse(this);
+  boids.push({
+    color: '#1FC872', // Colour of new boids
+    position: new Vec2(xy[0], xy[1]),
+    velocity: randomVelocity('boid'),
+    last: []
+  });
+});
+
+restart();
+requestAnimationFrame(tick);
+
+function tick() {
+  offscreenContext.clearRect(0, 0, width, height);
+  offscreenContext.drawImage(canvas, 0, 0, width, height);
+  context.clearRect(0, 0, width, height);
+  context.drawImage(offscreen, 0, 0, width, height);
+
+  preds.forEach(function(p){
+    p.acceleration = new Vec2();
+  })
+  
+
+
+  // For all boids
+  boids.forEach(function(b){
+    var forces = {
+      alignment:  new Vec2(),
+      cohesion:   new Vec2(),
+      separation: new Vec2()
+    };
+    b.acceleration = new Vec2();
+    boids.forEach(function(b2){
+        console.log(b);
+        console.log(b2);
+      if (b === b2) return;
+      var diff = b2.position.clone().subtract(b.position),
+          distance = diff.length();
+      if (distance && distance < separationDistance) {
+        forces.separation.add(diff.clone().scaleTo(-1 / distance)).active = true;
+      }
+      if (distance < flockmateRadius) {
+        forces.cohesion.add(diff).active = true;
+        forces.alignment.add(b2.velocity).active = true;
+      }
+    });
+    for (var key in forces) {
+      if (forces[key].active) {
+        forces[key].scaleTo(maxVelocity)
+          .subtract(b.velocity)
+          .truncate(window[key + "Force"]);
+        b.acceleration.add(forces[key]);
+      }
+    }
+    b.last.push(b.acceleration.length() / (alignmentForce + cohesionForce + separationForce));
+  });
+
+  boids.forEach(updateBoid);
+  preds.forEach(updateBoid);
+  requestAnimationFrame(tick);
+}
+
+function updateBoid(b) {
+  b.position.add(b.velocity.add(b.acceleration).truncate(maxVelocity));
+
+  if (b.position.y > height) {
+    b.position.y -= height;
+  } else if (b.position.y < 0) {
+    b.position.y += height;
+  }
+  if (b.position.x > width) {
+    b.position.x -= width;
+  } else if (b.position.x < 0) {
+    b.position.x += width;
+  }
+  context.beginPath();
+  context.fillStyle = b.color;
+  context.arc(b.position.x, b.position.y, 2, 0, 2 * Math.PI);
+  context.fill();
+}
+
+// Random velocity set during initialisation
+// If the mtype is a predator then it is less random and given a higher speed
+function randomVelocity(mtype) {
+    if (mtype == 'boid') {
+    return new Vec2(1 - Math.random() * 2, 1 - Math.random() * 2).scale(maxVelocity);
+    } else {return new Vec2(8, 10).scale(10);};
+}
+
+function radialVelocity(p) {
+  return new Vec2(Math.sin(2 * Math.PI * p), Math.cos(2 * Math.PI * p)).scale(maxVelocity);
+}
+
+// Function creates the initial boids and predators
+function initialize(num, mtype) {
+  return d3.range(num).map(function(d, i){
+    return {
+      position: new Vec2(Math.random() * width, Math.random() * height),
+      velocity: randomVelocity(mtype)
+    };
+  });
+}
+
+// Restart is the initial function to run
+function restart() {
+  offscreenContext.clearRect(0, 0, width, height);
+  context.clearRect(0, 0, width, height);
+
+  // Create boids
+  boids = window["initialize"](numBoids, 'boid');
+  boids.forEach(function(b, i){
+    b.color = '#95908F';
+    b.last = [];
+
+  // Create predators
+  preds = window["initialize"](numPreds, 'pred');
+  preds.forEach(function(p, i){
+    p.color = '#0D1A23';
+    p.last = [];
+  })
+  });
+}
+
+</script>
